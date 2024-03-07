@@ -1,0 +1,89 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: wp-pv-claim
+spec:
+  storageClassName: standard
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 8Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: 
+  name: wordpress-4
+  labels:
+    app: capstone
+    tier: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: capstone
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        app: capstone
+        tier: frontend
+    spec:
+      volumes:
+      - name: wordpress-persistent-storage
+        persistentVolumeClaim:
+          claimName: wp-pv-claim  
+      containers:
+      - name: wordpress
+        image: wordpress:6-php8.0
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: wordpress-persistent-storage
+          mountPath: /var/www/html
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: mysql-svc
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: MYSQL_USER
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: MYSQL_PASSWORD
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: MYSQL_DATABASE
+  
+        resources:
+            limits:
+              cpu: "200m"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service
+  labels:
+    app: capstone
+    tier: frontend
+spec:
+  selector:
+    app: capstone
+    tier: frontend
+  type: LoadBalancer
+  ports:
+  #  - protocol: TCP
+   -  port: 80
+      targetPort: 80
+      nodePort: 30050

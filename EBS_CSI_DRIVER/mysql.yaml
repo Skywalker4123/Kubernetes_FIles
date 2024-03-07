@@ -1,0 +1,150 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: standard
+provisioner: kubernetes.io/aws-ebs
+parameters:
+  type: gp2  # Adjust the storage type if needed (e.g., io1, sc1, st1)
+reclaimPolicy: Retain  # Adjust based on your retention policy
+volumeBindingMode: WaitForFirstConsumer  # Adjust based on your requirements
+allowVolumeExpansion: true  # Set to true if you want to allow volume expansion
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+spec:
+  serviceName: mysql-svc
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: MYSQL_DATABASE
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: MYSQL_USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: MYSQL_PASSWORD
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: volume
+          mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+  - metadata:
+      name: volume
+    spec:
+      storageClassName: standard
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 5Gi
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-pass
+type: Opaque
+data:
+  password: cGFzc3dvcmQ=  # base64-encoded password
+  MYSQL_DATABASE: bXlzcWxkYg==  # base64-encoded mysqldb
+  MYSQL_USER: bXlzcWx1c2Vy  # base64-encoded mysqluser
+  MYSQL_PASSWORD: cGFzc3dvcmQ=  # base64-encoded password
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-svc
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+  clusterIP: None  # Headless service
+
+
+#Now we’ll use kubectl exec to ensure that the StatefulSet is working correctly. Since our pod is named using an ordinal, we can jump right into it without searching for its name:
+
+# kubectl exec --stdin --tty mysql-0 -- /bin/bash
+
+#Now that we’re inside the container, start MySQL:
+
+#bash4.4# mysql -u root -p
+#Enter our root password: from secret (password)
+
+#From here, we can access the database we created:
+
+#mysql> USE mysqldb;
+#Now let’s create the database table that our To Do app will use:
+
+#mysql> CREATE TABLE IF NOT EXISTS Todo (task_id int NOT NULL AUTO_INCREMENT, task VARCHAR(255) NOT NULL, status VARCHAR(255), PRIMARY KEY (task_id));
+#Press return.
+
+#Query OK, 0 rows affected (0.04 sec)
+#We can check to confirm that our table has been created:
+
+#mysql> SHOW TABLES;
+#+-------------------+
+#| Tables_in_todo_db |
+#+-------------------+
+#| Todo              |
+#+-------------------+
+#1 row in set (0.00 sec)
+#Now let’s manually add an item to the table—in this case, a simple ‘hello’ message:
+
+#mysql> INSERT INTO Todo (task, status) VALUES ('Hello','ongoing');
+#Check the table for the new item:
+
+#mysql> SELECT * FROM Todo;
+#+---------+-------+---------+
+#| task_id | task  | status  |
+#+---------+-------+---------+
+#|       1 | Hello | ongoing |
+#+---------+-------+---------+
+#1 row in set (0.00 sec)
+#Exit MySQL and the container by typing exit twice.
+
+
+#If you're using a headless service for your MySQL deployment in Kubernetes, it means there is no ClusterIP assigned to the service, 
+#and the service is not directly accessible externally. 
+#In this scenario, you won't be able to access your MySQL database directly from MySQL Workbench 
+#outside the Kubernetes cluster without additional steps.
+
+#Here's what you can do:
+
+#Port Forwarding: You can use port forwarding to access your MySQL service from your local machine. Use kubectl port-forward to forward a local port to the MySQL pod within the cluster.
+
+#Example:
+
+#kubectl port-forward <mysql-pod-name> 3306:3306
+#Replace <mysql-pod-name> with the actual name of your MySQL pod. This command forwards port 3306 of your local machine to port 3306 of the MySQL pod.
