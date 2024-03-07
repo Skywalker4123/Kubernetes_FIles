@@ -1,0 +1,5 @@
+eksctl create cluster --name cluster --region ap-south-1 --node-type t2.medium --nodes-min 1 --nodes-max 2
+aws eks update-kubeconfig --region ap-south-1 --name cluster
+kubectl get nodes
+
+eksctl delete cluster --name cluster --region ap-south-1
